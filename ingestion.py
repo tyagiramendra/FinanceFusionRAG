@@ -6,7 +6,7 @@ from langchain_community.embeddings.sentence_transformer import (
 from langchain_community.vectorstores import Chroma
 from langchain_community.document_loaders import DirectoryLoader
 from langchain_community.document_loaders import PyMuPDFLoader
-#from utils import clean_text
+from utils import clean_text
 import glob
 from angle_emb import AnglE
 
@@ -32,17 +32,17 @@ def get_chunks():
     formatted_date = current_datetime.strftime("%d-%m-%y:%H:%M")
     all_chunk = []
     metadata = []
-    for file_path in all_files[:2]:
+    for file_path in all_files:
         loader = PyMuPDFLoader(file_path)
         doc = loader.load()
-        text_splitter =  RecursiveCharacterTextSplitter(chunk_size=445, chunk_overlap=50)
+        text_splitter =  RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
         chunks = text_splitter.split_documents(doc)
         document_name = os.path.basename(file_path)
         for chunk in chunks:
             all_chunk.append(chunk.page_content)
             metadata.append({"document_name":document_name,"created_date":formatted_date})
+        print(f"[Info]: File has been processed.{file_path}")
     return all_chunk, metadata
-
 
 
 if __name__ == "__main__":
