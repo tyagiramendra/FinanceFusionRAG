@@ -15,7 +15,7 @@ import pandas as pd
 from tqdm.auto import tqdm
 import json
 
-# Evalution dataset is generated and validated by LLM. Please refer this notebook rag_evaluation_pipeline. 
+
 eval_dataset = pd.read_csv("eval_dataset.csv")
 rag_outputs = []
 eval_dataset = eval_dataset.to_dict("records")
