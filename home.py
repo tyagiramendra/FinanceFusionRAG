@@ -1,26 +1,10 @@
 import streamlit as st
-import random
 import time
-from langchain_core.runnables import RunnableParallel
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
-
-from langchain_community.llms import HuggingFaceHub
-from langchain.memory import ConversationBufferMemory
-from langchain_core.prompts import PromptTemplate
-import chromadb
-from chromadb.utils import embedding_functions
-from chromadb.config import Settings
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, BitsAndBytesConfig
-import torch
-from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
-from langchain_community.llms.ollama import Ollama
-from sentence_transformers import CrossEncoder
 from rag_pipeline import rag_with_sources
 
 # APIs Configs
-from config import set_environment
-set_environment()
+from config import setup_langsmith
+setup_langsmith()
 #Logging
 import logging
 logging.basicConfig()
@@ -54,6 +38,9 @@ if prompt := st.chat_input("What is up?"):
     with st.chat_message("assistant"):
         response, reranked_results = rag_with_sources(prompt)
         response = st.write_stream(response_generator(response))
-        st.write(reranked_results)
+        with st.expander("Sources"):
+            st.dataframe(reranked_results)
+
+        
     # Add assistant response to chat history
     st.session_state.messages.append({"role": "assistant", "content": response})

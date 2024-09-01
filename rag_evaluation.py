@@ -3,17 +3,22 @@
 import os
 from config import set_environment, setup_langsmith
 set_environment()
-#setup_langsmith()
+
 
 import constants as c
-
-import langsmith
-from langchain import chat_models, prompts, smith
-from langchain.schema import output_parser
 from rag_pipeline import rag_with_sources, combine_chunks
 import pandas as pd
 from tqdm.auto import tqdm
 import json
+from langchain.prompts.chat import (
+    ChatPromptTemplate,
+    HumanMessagePromptTemplate,
+)
+from langchain.schema import SystemMessage
+from langchain.chat_models import ChatOpenAI
+
+#LLM
+eval_chat_model = ChatOpenAI(model="gpt-3.5-turbo-0125", temperature=0)
 
 
 eval_dataset = pd.read_csv("eval_dataset.csv")
@@ -34,4 +39,60 @@ for example in tqdm(eval_dataset):
         }
     rag_outputs.append(result)
     with open(c.output_file, "w") as f:
+            json.dump(rag_outputs, f)
+
+
+#Evaluate Rag Results by LLM
+
+EVALUATION_PROMPT = """###Task Description:
+An instruction (might include an Input inside it), a response to evaluate, a reference answer that gets a score of 5, and a score rubric representing a evaluation criteria are given.
+1. Write a detailed feedback that assess the quality of the response strictly based on the given score rubric, not evaluating in general.
+2. After writing a feedback, write a score that is an integer between 1 and 5. You should refer to the score rubric.
+3. The output format should look as follows: \"Feedback: {{write a feedback for criteria}} [RESULT] {{an integer number between 1 and 5}}\"
+4. Please do not generate any other opening, closing, and explanations. Be sure to include [RESULT] in your output.
+
+###The instruction to evaluate:
+{instruction}
+
+###Response to evaluate:
+{response}
+
+###Reference Answer (Score 5):
+{reference_answer}
+
+###Score Rubrics:
+[Is the response correct, accurate, and factual based on the reference answer?]
+Score 1: The response is completely incorrect, inaccurate, and/or not factual.
+Score 2: The response is mostly incorrect, inaccurate, and/or not factual.
+Score 3: The response is somewhat correct, accurate, and/or factual.
+Score 4: The response is mostly correct, accurate, and factual.
+Score 5: The response is completely correct, accurate, and factual.
+
+###Feedback:"""
+
+
+evaluation_prompt_template = ChatPromptTemplate.from_messages(
+    [
+        SystemMessage(content="You are a fair evaluator language model."),
+        HumanMessagePromptTemplate.from_template(EVALUATION_PROMPT),
+    ]
+)
+
+evaluator_name = "GPT3.5"
+
+for experiment in tqdm(rag_outputs):
+        if f"eval_score_{evaluator_name}" in experiment:
+            continue
+
+        eval_prompt = evaluation_prompt_template.format_messages(
+            instruction=experiment["question"],
+            response=experiment["generated_answer"],
+            reference_answer=experiment["true_answer"],
+        )
+        eval_result = eval_chat_model.invoke(eval_prompt)
+        feedback, score = [item.strip() for item in eval_result.content.split("[RESULT]")]
+        experiment[f"eval_score_{evaluator_name}"] = score
+        experiment[f"eval_feedback_{evaluator_name}"] = feedback
+
+        with open(c.final_eval_file, "w") as f:
             json.dump(rag_outputs, f)

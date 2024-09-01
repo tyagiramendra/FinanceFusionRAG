@@ -1,23 +1,20 @@
-import random
-import time
-from langchain_core.runnables import RunnableParallel
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
-
-from langchain_community.llms import HuggingFaceHub
-from langchain.memory import ConversationBufferMemory
 from langchain_core.prompts import PromptTemplate
 import chromadb
 from chromadb.utils import embedding_functions
-from chromadb.config import Settings
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, BitsAndBytesConfig
-import torch
-from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
 from langchain_community.llms.ollama import Ollama
 from sentence_transformers import CrossEncoder
 
+import os
+from langchain_groq import ChatGroq
+from dotenv import load_dotenv
+load_dotenv()
+os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
+
+llm= ChatGroq(model="gemma2-9b-it")
+
 # Load LLM using Ollama
-llm = Ollama(model="gemma:2b")
+#llm = Ollama(model="gemma:2b")
 
 #Load Embedding and Re-rannker models
 reranker = CrossEncoder('mixedbread-ai/mxbai-rerank-large-v1')
@@ -28,10 +25,18 @@ chroma_client = chromadb.PersistentClient(path="chroma_db/")
 db=chroma_client.get_collection(name="finance_fusion",embedding_function=embedding)
 #print(db.peek())
 
-def cross_encoder_rerankar(documents,query):
-    results = reranker.rank(query, documents, return_documents=True, top_k=2)
+def cross_encoder_rerankar(query, documents,meta):
+    ranked_results = reranker.rank(query, documents, return_documents=False, top_k=5)
+    final_results = []
+    for doc in ranked_results:
+        item={}
+        item["text"]=documents[doc["corpus_id"]]
+        item["score"]=doc["score"]
+        item["source"] = meta[doc["corpus_id"]]["document_name"]
+        item["summary"] = meta[doc["corpus_id"]]["chunk_summary"]
+        final_results.append(item)
     print("[Info]: Results has been re-ranked.")
-    return results
+    return final_results
 
 def croma_db_retriever(query,n_results):
     print("[Info]: Documents has been retrived.")
@@ -61,9 +66,10 @@ def augmentation(query,chunks):
     return rag_chain.invoke({"question":query,"context":context})
 
 def rag_with_sources(question):
-    response=croma_db_retriever(question,5)
+    response=croma_db_retriever(question,10)
     docs = response["documents"][0]
-    reranked_results=cross_encoder_rerankar(docs, question)
+    meta= response["metadatas"][0]
+    reranked_results=cross_encoder_rerankar(question, docs, meta)
     response=augmentation(question,reranked_results)
     print("[Info]: Generated")
     return response, reranked_results
